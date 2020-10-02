@@ -261,9 +261,9 @@ func legacyWebSearchItem(account: Account, result: ChatContextResult) -> LegacyW
         
         var representations: [TelegramMediaImageRepresentation] = []
         if let thumbnailResource = thumbnailResource, let thumbnailDimensions = thumbnailDimensions {
-            representations.append(TelegramMediaImageRepresentation(dimensions: PixelDimensions(thumbnailDimensions), resource: thumbnailResource))
+            representations.append(TelegramMediaImageRepresentation(dimensions: PixelDimensions(thumbnailDimensions), resource: thumbnailResource, progressiveSizes: []))
         }
-        representations.append(TelegramMediaImageRepresentation(dimensions: PixelDimensions(imageDimensions), resource: imageResource))
+        representations.append(TelegramMediaImageRepresentation(dimensions: PixelDimensions(imageDimensions), resource: imageResource, progressiveSizes: []))
         let tmpImage = TelegramMediaImage(imageId: MediaId(namespace: 0, id: 0), representations: representations, immediateThumbnailData: immediateThumbnailData, reference: nil, partialReference: nil, flags: [])
         thumbnailSignal = chatMessagePhotoDatas(postbox: account.postbox, photoReference: .standalone(media: tmpImage), autoFetchFullSize: false)
         |> mapToSignal { value -> Signal<UIImage, NoError> in
@@ -313,7 +313,7 @@ private func galleryItems(account: Account, results: [ChatContextResult], curren
     return (galleryItems, focusItem)
 }
 
-func presentLegacyWebSearchGallery(context: AccountContext, peer: Peer?, presentationData: PresentationData, results: [ChatContextResult], current: ChatContextResult, selectionContext: TGMediaSelectionContext?, editingContext: TGMediaEditingContext, updateHiddenMedia: @escaping (String?) -> Void, initialLayout: ContainerViewLayout?, transitionHostView: @escaping () -> UIView?, transitionView: @escaping (ChatContextResult) -> UIView?, completed: @escaping (ChatContextResult) -> Void, presentStickers: ((@escaping (TelegramMediaFile, Bool, UIView, CGRect) -> Void) -> TGPhotoPaintStickersScreen?)?, present: (ViewController, Any?) -> Void) {
+func presentLegacyWebSearchGallery(context: AccountContext, peer: Peer?, chatLocation: ChatLocation?, presentationData: PresentationData, results: [ChatContextResult], current: ChatContextResult, selectionContext: TGMediaSelectionContext?, editingContext: TGMediaEditingContext, updateHiddenMedia: @escaping (String?) -> Void, initialLayout: ContainerViewLayout?, transitionHostView: @escaping () -> UIView?, transitionView: @escaping (ChatContextResult) -> UIView?, completed: @escaping (ChatContextResult) -> Void, presentStickers: ((@escaping (TelegramMediaFile, Bool, UIView, CGRect) -> Void) -> TGPhotoPaintStickersScreen?)?, present: (ViewController, Any?) -> Void) {
     let legacyController = LegacyController(presentation: .custom, theme: presentationData.theme, initialLayout: nil)
     legacyController.statusBar.statusBarStyle = presentationData.theme.rootController.statusBarStyle.style
     
@@ -338,8 +338,8 @@ func presentLegacyWebSearchGallery(context: AccountContext, peer: Peer?, present
     
     let model = TGMediaPickerGalleryModel(context: legacyController.context, items: items, focus: focusItem, selectionContext: selectionContext, editingContext: editingContext, hasCaptions: false, allowCaptionEntities: true, hasTimer: false, onlyCrop: false, inhibitDocumentCaptions: false, hasSelectionPanel: false, hasCamera: false, recipientName: peer?.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder))!
     model.stickersContext = paintStickersContext
-    if let peer = peer {
-        model.suggestionContext = legacySuggestionContext(context: context, peerId: peer.id)
+    if let peer = peer, let chatLocation = chatLocation {
+        model.suggestionContext = legacySuggestionContext(context: context, peerId: peer.id, chatLocation: chatLocation)
     }
     controller.model = model
     model.controller = controller

@@ -60,7 +60,11 @@ final class InstantVideoController: LegacyController, StandalonePresentableContr
                 self?.durationValue.set(duration)
             }
             captureController.onDismiss = { [weak self] _, isCancelled in
-                self?.onDismiss?(isCancelled)
+                guard let strongSelf = self else { return }
+                if !strongSelf.dismissedVideo {
+                    self?.dismissedVideo = true
+                    self?.onDismiss?(isCancelled)
+                }
             }
             captureController.onStop = { [weak self] in
                 self?.onStop?()
@@ -158,7 +162,7 @@ func legacyInstantVideoController(theme: PresentationTheme, panelFrame: CGRect, 
                     let thumbnailImage = TGScaleImageToPixelSize(previewImage, thumbnailSize)!
                     if let thumbnailData = thumbnailImage.jpegData(compressionQuality: 0.4) {
                         context.account.postbox.mediaBox.storeResourceData(resource.id, data: thumbnailData)
-                        previewRepresentations.append(TelegramMediaImageRepresentation(dimensions: PixelDimensions(thumbnailSize), resource: resource))
+                        previewRepresentations.append(TelegramMediaImageRepresentation(dimensions: PixelDimensions(thumbnailSize), resource: resource, progressiveSizes: []))
                     }
                 }
                 

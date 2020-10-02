@@ -403,12 +403,12 @@ public struct NetworkInitializationArguments {
     public let languagesCategory: String
     public let appVersion: String
     public let voipMaxLayer: Int32
-    public let voipVersions: [String]
+    public let voipVersions: [CallSessionManagerImplementationVersion]
     public let appData: Signal<Data?, NoError>
     public let autolockDeadine: Signal<Int32?, NoError>
     public let encryptionProvider: EncryptionProvider
     
-    public init(apiId: Int32, apiHash: String, languagesCategory: String, appVersion: String, voipMaxLayer: Int32, voipVersions: [String], appData: Signal<Data?, NoError>, autolockDeadine: Signal<Int32?, NoError>, encryptionProvider: EncryptionProvider) {
+    public init(apiId: Int32, apiHash: String, languagesCategory: String, appVersion: String, voipMaxLayer: Int32, voipVersions: [CallSessionManagerImplementationVersion], appData: Signal<Data?, NoError>, autolockDeadine: Signal<Int32?, NoError>, encryptionProvider: EncryptionProvider) {
         self.apiId = apiId
         self.apiHash = apiHash
         self.languagesCategory = languagesCategory
@@ -424,7 +424,17 @@ public struct NetworkInitializationArguments {
 private let cloudDataContext = Atomic<CloudDataContext?>(value: nil)
 #endif
 
-func initializedNetwork(arguments: NetworkInitializationArguments, supplementary: Bool, datacenterId: Int, keychain: Keychain, basePath: String, testingEnvironment: Bool, languageCode: String?, proxySettings: ProxySettings?, networkSettings: NetworkSettings?, phoneNumber: String?) -> Signal<Network, NoError> {
+private final class SharedContextStore {
+    struct Key: Hashable {
+        var accountId: AccountRecordId
+    }
+    
+    var contexts: [Key: MTContext] = [:]
+}
+
+private let sharedContexts = Atomic<SharedContextStore>(value: SharedContextStore())
+
+func initializedNetwork(accountId: AccountRecordId, arguments: NetworkInitializationArguments, supplementary: Bool, datacenterId: Int, keychain: Keychain, basePath: String, testingEnvironment: Bool, languageCode: String?, proxySettings: ProxySettings?, networkSettings: NetworkSettings?, phoneNumber: String?) -> Signal<Network, NoError> {
     return Signal { subscriber in
         let queue = Queue()
         queue.async {
@@ -464,7 +474,22 @@ func initializedNetwork(arguments: NetworkInitializationArguments, supplementary
                 }
             }
             
-            let context = MTContext(serialization: serialization, encryptionProvider: arguments.encryptionProvider, apiEnvironment: apiEnvironment, isTestingEnvironment: testingEnvironment, useTempAuthKeys: false)!
+            var contextValue: MTContext?
+            sharedContexts.with { store in
+                let key = SharedContextStore.Key(accountId: accountId)
+                
+                let context: MTContext
+                if false, let current = store.contexts[key] {
+                    context = current
+                    context.updateApiEnvironment({ _ in return apiEnvironment})
+                } else {
+                    context = MTContext(serialization: serialization, encryptionProvider: arguments.encryptionProvider, apiEnvironment: apiEnvironment, isTestingEnvironment: testingEnvironment, useTempAuthKeys: true)!
+                    store.contexts[key] = context
+                }
+                contextValue = context
+            }
+            
+            let context = contextValue!
             
             let seedAddressList: [Int: [String]]
             

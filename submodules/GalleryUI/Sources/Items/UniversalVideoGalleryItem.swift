@@ -34,6 +34,7 @@ public class UniversalVideoGalleryItem: GalleryItem {
     let contentInfo: UniversalVideoGalleryItemContentInfo?
     let caption: NSAttributedString
     let credit: NSAttributedString?
+    let displayInfoOnTop: Bool
     let hideControls: Bool
     let fromPlayingVideo: Bool
     let landscape: Bool
@@ -45,7 +46,7 @@ public class UniversalVideoGalleryItem: GalleryItem {
     let storeMediaPlaybackState: (MessageId, Double?) -> Void
     let present: (ViewController, Any?) -> Void
 
-    public init(context: AccountContext, presentationData: PresentationData, content: UniversalVideoContent, originData: GalleryItemOriginData?, indexData: GalleryItemIndexData?, contentInfo: UniversalVideoGalleryItemContentInfo?, caption: NSAttributedString, credit: NSAttributedString? = nil, hideControls: Bool = false, fromPlayingVideo: Bool = false, landscape: Bool = false, timecode: Double? = nil, configuration: GalleryConfiguration? = nil, playbackCompleted: @escaping () -> Void = {}, performAction: @escaping (GalleryControllerInteractionTapAction) -> Void, openActionOptions: @escaping (GalleryControllerInteractionTapAction) -> Void, storeMediaPlaybackState: @escaping (MessageId, Double?) -> Void, present: @escaping (ViewController, Any?) -> Void) {
+    public init(context: AccountContext, presentationData: PresentationData, content: UniversalVideoContent, originData: GalleryItemOriginData?, indexData: GalleryItemIndexData?, contentInfo: UniversalVideoGalleryItemContentInfo?, caption: NSAttributedString, credit: NSAttributedString? = nil, displayInfoOnTop: Bool = false, hideControls: Bool = false, fromPlayingVideo: Bool = false, landscape: Bool = false, timecode: Double? = nil, configuration: GalleryConfiguration? = nil, playbackCompleted: @escaping () -> Void = {}, performAction: @escaping (GalleryControllerInteractionTapAction) -> Void, openActionOptions: @escaping (GalleryControllerInteractionTapAction) -> Void, storeMediaPlaybackState: @escaping (MessageId, Double?) -> Void, present: @escaping (ViewController, Any?) -> Void) {
         self.context = context
         self.presentationData = presentationData
         self.content = content
@@ -54,6 +55,7 @@ public class UniversalVideoGalleryItem: GalleryItem {
         self.contentInfo = contentInfo
         self.caption = caption
         self.credit = credit
+        self.displayInfoOnTop = displayInfoOnTop
         self.hideControls = hideControls
         self.fromPlayingVideo = fromPlayingVideo
         self.landscape = landscape
@@ -75,6 +77,10 @@ public class UniversalVideoGalleryItem: GalleryItem {
         
         node.setupItem(self)
         
+        if self.displayInfoOnTop, case let .message(message) = self.contentInfo {
+            node.titleContentView?.setMessage(message, presentationData: self.presentationData, accountPeerId: self.context.account.peerId)
+        }
+        
         return node
     }
     
@@ -85,6 +91,10 @@ public class UniversalVideoGalleryItem: GalleryItem {
             }
             
             node.setupItem(self)
+            
+            if self.displayInfoOnTop, case let .message(message) = self.contentInfo {
+                node.titleContentView?.setMessage(message, presentationData: self.presentationData, accountPeerId: self.context.account.peerId)
+            }
         }
     }
     
@@ -249,6 +259,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
     fileprivate let _titleView = Promise<UIView?>()
     fileprivate let _rightBarButtonItems = Promise<[UIBarButtonItem]?>()
     
+    fileprivate var titleContentView: GalleryTitleView?
     private let scrubberView: ChatVideoGalleryItemScrubberView
     private let footerContentNode: ChatItemGalleryFooterContentNode
     private let overlayContentNode: UniversalVideoGalleryItemOverlayNode
@@ -309,7 +320,6 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
         self.statusNode.frame = CGRect(origin: CGPoint(), size: CGSize(width: 50.0, height: 50.0))
         
         self._title.set(.single(""))
-        self._titleView.set(.single(nil))
         
         super.init()
         
@@ -412,6 +422,9 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
             strongSelf.pictureInPictureButtonPressed()
             return true
         }
+        
+        self.titleContentView = GalleryTitleView(frame: CGRect())
+        self._titleView.set(.single(self.titleContentView))
     }
     
     deinit {
@@ -756,7 +769,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
         if let contentInfo = item.contentInfo {
             switch contentInfo {
                 case let .message(message):
-                    self.footerContentNode.setMessage(message)
+                    self.footerContentNode.setMessage(message, displayInfo: !item.displayInfoOnTop)
                 case let .webPage(webPage, media, _):
                     self.footerContentNode.setWebPage(webPage, media: media)
             }
@@ -1121,7 +1134,34 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
         let fromTransform: CATransform3D
         let toTransform: CATransform3D
         
-        if let interactiveMediaNode = node.0 as? GalleryItemTransitionNode, interactiveMediaNode.isAvailableForGalleryTransition(), videoNode.hasAttachedContext {
+        if let instantNode = node.0 as? GalleryItemTransitionNode, instantNode.isAvailableForInstantPageTransition(), videoNode.hasAttachedContext {
+            copyView.removeFromSuperview()
+            
+            let previousFrame = videoNode.frame
+            let previousSuperview = videoNode.view.superview
+            addToTransitionSurface(videoNode.view)
+            videoNode.view.superview?.bringSubviewToFront(videoNode.view)
+            
+            if let previousSuperview = previousSuperview {
+                videoNode.frame = previousSuperview.convert(previousFrame, to: videoNode.view.superview)
+                transformedSuperFrame = transformedSuperFrame.offsetBy(dx: videoNode.position.x - previousFrame.center.x, dy: videoNode.position.y - previousFrame.center.y)
+            }
+            
+            let initialScale: CGFloat = 1.0
+            let targetScale = max(transformedFrame.size.width / videoNode.layer.bounds.size.width, transformedFrame.size.height / videoNode.layer.bounds.size.height)
+            
+            videoNode.backgroundColor = .clear
+        
+            let transformScale: CGFloat = initialScale * targetScale
+            fromTransform = CATransform3DScale(videoNode.layer.transform, initialScale, initialScale, 1.0)
+            toTransform = CATransform3DScale(videoNode.layer.transform, transformScale, transformScale, 1.0)
+            
+            if videoNode.hasAttachedContext {
+                if self.isPaused || !self.keepSoundOnDismiss {
+                    videoNode.continuePlayingWithoutSound()
+                }
+            }
+        } else if let interactiveMediaNode = node.0 as? GalleryItemTransitionNode, interactiveMediaNode.isAvailableForGalleryTransition(), videoNode.hasAttachedContext {
             copyView.removeFromSuperview()
             
             let previousFrame = videoNode.frame
@@ -1153,33 +1193,6 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
                     })
                 }
             }
-        
-            let transformScale: CGFloat = initialScale * targetScale
-            fromTransform = CATransform3DScale(videoNode.layer.transform, initialScale, initialScale, 1.0)
-            toTransform = CATransform3DScale(videoNode.layer.transform, transformScale, transformScale, 1.0)
-            
-            if videoNode.hasAttachedContext {
-                if self.isPaused || !self.keepSoundOnDismiss {
-                    videoNode.continuePlayingWithoutSound()
-                }
-            }
-        } else if let instantNode = node.0 as? GalleryItemTransitionNode, instantNode.isAvailableForInstantPageTransition(), videoNode.hasAttachedContext {
-            copyView.removeFromSuperview()
-            
-            let previousFrame = videoNode.frame
-            let previousSuperview = videoNode.view.superview
-            addToTransitionSurface(videoNode.view)
-            videoNode.view.superview?.bringSubviewToFront(videoNode.view)
-            
-            if let previousSuperview = previousSuperview {
-                videoNode.frame = previousSuperview.convert(previousFrame, to: videoNode.view.superview)
-                transformedSuperFrame = transformedSuperFrame.offsetBy(dx: videoNode.position.x - previousFrame.center.x, dy: videoNode.position.y - previousFrame.center.y)
-            }
-            
-            let initialScale: CGFloat = 1.0
-            let targetScale = max(transformedFrame.size.width / videoNode.layer.bounds.size.width, transformedFrame.size.height / videoNode.layer.bounds.size.height)
-            
-            videoNode.backgroundColor = .clear
         
             let transformScale: CGFloat = initialScale * targetScale
             fromTransform = CATransform3DScale(videoNode.layer.transform, initialScale, initialScale, 1.0)
@@ -1352,7 +1365,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
                 
                 switch contentInfo {
                     case let .message(message):
-                        let gallery = GalleryController(context: context, source: .peerMessagesAtId(message.id), replaceRootController: { controller, ready in
+                        let gallery = GalleryController(context: context, source: .peerMessagesAtId(messageId: message.id, chatLocation: .peer(message.id.peerId), chatLocationContextHolder: Atomic<ChatLocationContextHolder?>(value: nil)), replaceRootController: { controller, ready in
                             if let baseNavigationController = baseNavigationController {
                                 baseNavigationController.replaceTopController(controller, animated: false, ready: ready)
                             }
@@ -1434,7 +1447,7 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
                 
                 switch contentInfo {
                     case let .message(message):
-                        let gallery = GalleryController(context: context, source: .peerMessagesAtId(message.id), replaceRootController: { controller, ready in
+                        let gallery = GalleryController(context: context, source: .peerMessagesAtId(messageId: message.id, chatLocation: .peer(message.id.peerId), chatLocationContextHolder: Atomic<ChatLocationContextHolder?>(value: nil)), replaceRootController: { controller, ready in
                             if let baseNavigationController = baseNavigationController {
                                 baseNavigationController.replaceTopController(controller, animated: false, ready: ready)
                             }
@@ -1535,6 +1548,12 @@ final class UniversalVideoGalleryItemNode: ZoomableContentGalleryItemNode {
                 (baseNavigationController?.topViewController as? ViewController)?.present(controller, in: .window(.root), with: nil)
             })
         }
+    }
+    
+    override func adjustForPreviewing() {
+        super.adjustForPreviewing()
+        
+        self.scrubberView.isHidden = true
     }
     
     override func footerContent() -> Signal<(GalleryFooterContentNode?, GalleryOverlayContentNode?), NoError> {

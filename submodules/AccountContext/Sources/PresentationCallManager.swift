@@ -8,7 +8,7 @@ import TelegramAudio
 
 public enum RequestCallResult {
     case requested
-    case alreadyInProgress(PeerId)
+    case alreadyInProgress(PeerId?)
 }
 
 public struct CallAuxiliaryServer {
@@ -40,44 +40,78 @@ public struct PresentationCallState: Equatable {
         case connecting(Data?)
         case active(Double, Int32?, Data)
         case reconnecting(Double, Int32?, Data)
-        case terminating
+        case terminating(CallSessionTerminationReason?)
         case terminated(CallId?, CallSessionTerminationReason?, Bool)
     }
     
     public enum VideoState: Equatable {
         case notAvailable
-        case possible
-        case outgoingRequested
-        case incomingRequested
+        case inactive
         case active
+        case paused
     }
     
     public enum RemoteVideoState: Equatable {
         case inactive
         case active
+        case paused
+    }
+    
+    public enum RemoteAudioState: Equatable {
+        case active
+        case muted
+    }
+    
+    public enum RemoteBatteryLevel: Equatable {
+        case normal
+        case low
     }
     
     public var state: State
     public var videoState: VideoState
     public var remoteVideoState: RemoteVideoState
+    public var remoteAudioState: RemoteAudioState
+    public var remoteBatteryLevel: RemoteBatteryLevel
     
-    public init(state: State, videoState: VideoState, remoteVideoState: RemoteVideoState) {
+    public init(state: State, videoState: VideoState, remoteVideoState: RemoteVideoState, remoteAudioState: RemoteAudioState, remoteBatteryLevel: RemoteBatteryLevel) {
         self.state = state
         self.videoState = videoState
         self.remoteVideoState = remoteVideoState
+        self.remoteAudioState = remoteAudioState
+        self.remoteBatteryLevel = remoteBatteryLevel
     }
 }
 
 public final class PresentationCallVideoView {
+    public enum Orientation {
+        case rotation0
+        case rotation90
+        case rotation180
+        case rotation270
+    }
+    
     public let view: UIView
-    public let setOnFirstFrameReceived: ((() -> Void)?) -> Void
+    public let setOnFirstFrameReceived: (((Float) -> Void)?) -> Void
+    
+    public let getOrientation: () -> Orientation
+    public let getAspect: () -> CGFloat
+    public let setOnOrientationUpdated: (((Orientation, CGFloat) -> Void)?) -> Void
+    public let setOnIsMirroredUpdated: (((Bool) -> Void)?) -> Void
     
     public init(
         view: UIView,
-        setOnFirstFrameReceived: @escaping ((() -> Void)?) -> Void
+        setOnFirstFrameReceived: @escaping (((Float) -> Void)?) -> Void,
+        getOrientation: @escaping () -> Orientation,
+        getAspect: @escaping () -> CGFloat,
+        setOnOrientationUpdated: @escaping (((Orientation, CGFloat) -> Void)?) -> Void,
+        setOnIsMirroredUpdated: @escaping (((Bool) -> Void)?) -> Void
     ) {
         self.view = view
         self.setOnFirstFrameReceived = setOnFirstFrameReceived
+        self.getOrientation = getOrientation
+        self.getAspect = getAspect
+        self.setOnOrientationUpdated = setOnOrientationUpdated
+        self.setOnIsMirroredUpdated = setOnIsMirroredUpdated
     }
 }
 
@@ -106,7 +140,8 @@ public protocol PresentationCall: class {
     func toggleIsMuted()
     func setIsMuted(_ value: Bool)
     func requestVideo()
-    func acceptVideo()
+    func setRequestedVideoAspect(_ aspect: Float)
+    func disableVideo()
     func setOutgoingVideoIsPaused(_ isPaused: Bool)
     func switchVideoCamera()
     func setCurrentAudioOutput(_ output: AudioSessionOutput)
@@ -119,5 +154,5 @@ public protocol PresentationCall: class {
 public protocol PresentationCallManager: class {
     var currentCallSignal: Signal<PresentationCall?, NoError> { get }
     
-    func requestCall(account: Account, peerId: PeerId, isVideo: Bool, endCurrentIfAny: Bool) -> RequestCallResult
+    func requestCall(context: AccountContext, peerId: PeerId, isVideo: Bool, endCurrentIfAny: Bool) -> RequestCallResult
 }

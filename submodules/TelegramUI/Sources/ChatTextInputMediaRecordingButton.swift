@@ -8,14 +8,10 @@ import SwiftSignalKit
 import TelegramPresentationData
 import LegacyComponents
 import AccountContext
+import ChatInterfaceState
 
 private let offsetThreshold: CGFloat = 10.0
 private let dismissOffsetThreshold: CGFloat = 70.0
-
-enum ChatTextInputMediaRecordingButtonMode: Int32 {
-    case audio = 0
-    case video = 1
-}
 
 private func findTargetView(_ view: UIView, point: CGPoint) -> UIView? {
     if view.bounds.contains(point) && view.tag == 0x01f2bca {
@@ -238,7 +234,13 @@ final class ChatTextInputMediaRecordingButton: TGModernConversationInputMicButto
     }
     
     private lazy var micDecoration: (UIView & TGModernConversationInputMicButtonDecoration) = {
-        let blobView = VoiceBlobView(frame: CGRect(origin: CGPoint(), size: CGSize(width: 220.0, height: 220.0)))
+        let blobView = VoiceBlobView(
+            frame: CGRect(origin: CGPoint(), size: CGSize(width: 220.0, height: 220.0)),
+            maxLevel: 4,
+            smallBlobRange: (0.45, 0.55),
+            mediumBlobRange: (0.52, 0.87),
+            bigBlobRange: (0.57, 1.00)
+        )
         blobView.setColor(self.theme.chat.inputPanel.actionControlFillColor)
         return blobView
     }()

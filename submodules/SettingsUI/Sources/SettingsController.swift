@@ -998,7 +998,7 @@ public func settingsController(context: AccountContext, accountManager: AccountM
         if let data = image.jpegData(compressionQuality: 0.6) {
             let resource = LocalFileMediaResource(fileId: arc4random64())
             context.account.postbox.mediaBox.storeResourceData(resource.id, data: data)
-            let representation = TelegramMediaImageRepresentation(dimensions: PixelDimensions(width: 640, height: 640), resource: resource)
+            let representation = TelegramMediaImageRepresentation(dimensions: PixelDimensions(width: 640, height: 640), resource: resource, progressiveSizes: [])
             updateState { state in
                 var state = state
                 state.updatingAvatar = .image(representation, true)
@@ -1025,7 +1025,7 @@ public func settingsController(context: AccountContext, accountManager: AccountM
         if let data = image.jpegData(compressionQuality: 0.6) {
             let photoResource = LocalFileMediaResource(fileId: arc4random64())
             context.account.postbox.mediaBox.storeResourceData(photoResource.id, data: data)
-            let representation = TelegramMediaImageRepresentation(dimensions: PixelDimensions(width: 640, height: 640), resource: photoResource)
+            let representation = TelegramMediaImageRepresentation(dimensions: PixelDimensions(width: 640, height: 640), resource: photoResource, progressiveSizes: [])
             updateState { state in
                 var state = state
                 state.updatingAvatar = .image(representation, true)
@@ -1400,7 +1400,7 @@ public func settingsController(context: AccountContext, accountManager: AccountM
                 let mixin = TGMediaAvatarMenuMixin(context: legacyController.context, parentController: emptyController, hasSearchButton: true, hasDeleteButton: hasPhotos, hasViewButton: false, personalPhoto: true, isVideo: false, saveEditedPhotos: false, saveCapturedMedia: false, signup: false)!
                 let _ = currentAvatarMixin.swap(mixin)
                 mixin.requestSearchController = { assetsController in
-                    let controller = WebSearchController(context: context, peer: peer, configuration: searchBotsConfiguration, mode: .avatar(initialQuery: nil, completion: { result in
+                    let controller = WebSearchController(context: context, peer: peer, chatLocation: nil, configuration: searchBotsConfiguration, mode: .avatar(initialQuery: nil, completion: { result in
                         assetsController?.dismiss()
                         completedProfilePhotoImpl(result)
                     }))
@@ -1661,7 +1661,7 @@ public func settingsController(context: AccountContext, accountManager: AccountM
             presentControllerImpl?(c, a)
         }, pushController: { c in
             pushControllerImpl?(c)
-        }, getNavigationController: getNavigationControllerImpl, exceptionsList: notifyExceptions.get(), archivedStickerPacks: archivedPacks.get(), privacySettings: privacySettings.get(), hasWallet: hasWallet, activeSessionsContext: activeSessionsContextAndCountSignal |> map { $0.0 } |> distinctUntilChanged(isEqual: { $0 === $1 }), webSessionsContext: activeSessionsContextAndCountSignal |> map { $0.2 } |> distinctUntilChanged(isEqual: { $0 === $1 }))
+        }, getNavigationController: getNavigationControllerImpl, resolvedFaqUrl: .complete(), exceptionsList: notifyExceptions.get(), archivedStickerPacks: archivedPacks.get(), privacySettings: privacySettings.get(), hasWallet: hasWallet, activeSessionsContext: activeSessionsContextAndCountSignal |> map { $0.0 } |> distinctUntilChanged(isEqual: { $0 === $1 }), webSessionsContext: activeSessionsContextAndCountSignal |> map { $0.2 } |> distinctUntilChanged(isEqual: { $0 === $1 }))
         
         let (hasWallet, hasPassport, hasWatchApp, enableQRLogin, enableFilters) = hasWalletPassportAndWatch
         let listState = ItemListNodeState(presentationData: ItemListPresentationData(presentationData), entries: settingsEntries(account: context.account, presentationData: presentationData, state: state, view: view, proxySettings: proxySettings, notifyExceptions: preferencesAndExceptions.1, notificationsAuthorizationStatus: preferencesAndExceptions.2, notificationsWarningSuppressed: preferencesAndExceptions.3, unreadTrendingStickerPacks: unreadTrendingStickerPacks, archivedPacks: featuredAndArchived.1, privacySettings: preferencesAndExceptions.4, hasWallet: hasWallet, hasPassport: hasPassport, hasWatchApp: hasWatchApp, accountsAndPeers: accountsAndPeers.1, inAppNotificationSettings: inAppNotificationSettings, experimentalUISettings: experimentalUISettings, displayPhoneNumberConfirmation: preferencesAndExceptions.5, otherSessionCount: otherSessionCount, enableQRLogin: enableQRLogin, enableFilters: enableFilters), style: .blocks, searchItem: searchItem, initialScrollToItem: ListViewScrollToItem(index: 0, position: .top(-navigationBarSearchContentHeight), animated: false, curve: .Default(duration: 0.0), directionHint: .Up))

@@ -497,7 +497,7 @@ private func channelInfoEntries(account: Account, presentationData: Presentation
             
             let discussionGroupTitle: String
             if let cachedData = view.cachedData as? CachedChannelData {
-                if let linkedDiscussionPeerId = cachedData.linkedDiscussionPeerId, let peer = view.peers[linkedDiscussionPeerId] {
+                if case let .known(maybeLinkedDiscussionPeerId) = cachedData.linkedDiscussionPeerId, let linkedDiscussionPeerId = maybeLinkedDiscussionPeerId, let peer = view.peers[linkedDiscussionPeerId] {
                     if let addressName = peer.addressName, !addressName.isEmpty {
                         discussionGroupTitle = "@\(addressName)"
                     } else {
@@ -532,7 +532,7 @@ private func channelInfoEntries(account: Account, presentationData: Presentation
             if let _ = state.editingState, let adminRights = peer.adminRights, !adminRights.isEmpty {
                 let discussionGroupTitle: String?
                 if let cachedData = view.cachedData as? CachedChannelData {
-                    if let linkedDiscussionPeerId = cachedData.linkedDiscussionPeerId, let peer = view.peers[linkedDiscussionPeerId] {
+                    if case let .known(maybeLinkedDiscussionPeerId) = cachedData.linkedDiscussionPeerId, let linkedDiscussionPeerId = maybeLinkedDiscussionPeerId, let peer = view.peers[linkedDiscussionPeerId] {
                         if let addressName = peer.addressName, !addressName.isEmpty {
                             discussionGroupTitle = "@\(addressName)"
                         } else {
@@ -734,7 +734,7 @@ public func channelInfoController(context: AccountContext, peerId: PeerId) -> Vi
                     if let data = image.jpegData(compressionQuality: 0.6) {
                         let resource = LocalFileMediaResource(fileId: arc4random64())
                         context.account.postbox.mediaBox.storeResourceData(resource.id, data: data)
-                        let representation = TelegramMediaImageRepresentation(dimensions: PixelDimensions(width: 640, height: 640), resource: resource)
+                        let representation = TelegramMediaImageRepresentation(dimensions: PixelDimensions(width: 640, height: 640), resource: resource, progressiveSizes: [])
                         updateState {
                             $0.withUpdatedUpdatingAvatar(.image(representation, true))
                         }
@@ -757,7 +757,7 @@ public func channelInfoController(context: AccountContext, peerId: PeerId) -> Vi
                 let mixin = TGMediaAvatarMenuMixin(context: legacyController.context, parentController: emptyController, hasSearchButton: true, hasDeleteButton: hasPhotos, hasViewButton: false, personalPhoto: false, isVideo: false, saveEditedPhotos: false, saveCapturedMedia: false, signup: true)!
                 let _ = currentAvatarMixin.swap(mixin)
                 mixin.requestSearchController = { assetsController in
-                    let controller = WebSearchController(context: context, peer: peer, configuration: searchBotsConfiguration, mode: .avatar(initialQuery: peer?.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder), completion: { result in
+                    let controller = WebSearchController(context: context, peer: peer, chatLocation: nil, configuration: searchBotsConfiguration, mode: .avatar(initialQuery: peer?.displayTitle(strings: presentationData.strings, displayOrder: presentationData.nameDisplayOrder), completion: { result in
                         assetsController?.dismiss()
                         completedImpl(result)
                     }))
@@ -951,7 +951,7 @@ public func channelInfoController(context: AccountContext, peerId: PeerId) -> Vi
                 if canEditChannel {
                     hasSomethingToEdit = true
                 } else if let adminRights = peer.adminRights, !adminRights.isEmpty {
-                    if let cachedData = view.cachedData as? CachedChannelData, let _ = cachedData.linkedDiscussionPeerId {
+                    if let cachedData = view.cachedData as? CachedChannelData, case let .known(maybeLinkedDiscussionPeerId) = cachedData.linkedDiscussionPeerId, let _ = maybeLinkedDiscussionPeerId {
                         hasSomethingToEdit = true
                     }
                 }
@@ -1076,8 +1076,8 @@ public func channelInfoController(context: AccountContext, peerId: PeerId) -> Vi
         }
         for childController in tabController.controllers {
             if let chatListController = childController as? ChatListController {
-                chatListController.maybeAskForPeerChatRemoval(peer: RenderedPeer(peer: peer), deleteGloballyIfPossible: deleteGloballyIfPossible, completion: { [weak navigationController] deleted in
-                    if deleted {
+                chatListController.maybeAskForPeerChatRemoval(peer: RenderedPeer(peer: peer), joined: false, deleteGloballyIfPossible: deleteGloballyIfPossible, completion: { [weak navigationController] removed in
+                    if removed {
                         navigationController?.popToRoot(animated: true)
                     }
                 }, removed: {

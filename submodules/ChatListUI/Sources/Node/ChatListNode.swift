@@ -59,7 +59,7 @@ public final class ChatListNodeInteraction {
     let setPeerIdWithRevealedOptions: (PeerId?, PeerId?) -> Void
     let setItemPinned: (PinnedItemId, Bool) -> Void
     let setPeerMuted: (PeerId, Bool) -> Void
-    let deletePeer: (PeerId) -> Void
+    let deletePeer: (PeerId, Bool) -> Void
     let updatePeerGrouping: (PeerId, Bool) -> Void
     let togglePeerMarkedUnread: (PeerId, Bool) -> Void
     let toggleArchivedFolderHiddenByDefault: () -> Void
@@ -70,7 +70,7 @@ public final class ChatListNodeInteraction {
     public var searchTextHighightState: String?
     var highlightedChatLocation: ChatListHighlightedLocation?
     
-    public init(activateSearch: @escaping () -> Void, peerSelected: @escaping (Peer, ChatListNodeEntryPromoInfo?) -> Void, disabledPeerSelected: @escaping (Peer) -> Void, togglePeerSelected: @escaping (PeerId) -> Void, additionalCategorySelected: @escaping (Int) -> Void, messageSelected: @escaping (Peer, Message, ChatListNodeEntryPromoInfo?) -> Void, groupSelected: @escaping (PeerGroupId) -> Void, addContact: @escaping (String) -> Void, setPeerIdWithRevealedOptions: @escaping (PeerId?, PeerId?) -> Void, setItemPinned: @escaping (PinnedItemId, Bool) -> Void, setPeerMuted: @escaping (PeerId, Bool) -> Void, deletePeer: @escaping (PeerId) -> Void, updatePeerGrouping: @escaping (PeerId, Bool) -> Void, togglePeerMarkedUnread: @escaping (PeerId, Bool) -> Void, toggleArchivedFolderHiddenByDefault: @escaping () -> Void, hidePsa: @escaping (PeerId) -> Void, activateChatPreview: @escaping (ChatListItem, ASDisplayNode, ContextGesture?) -> Void, present: @escaping (ViewController) -> Void) {
+    public init(activateSearch: @escaping () -> Void, peerSelected: @escaping (Peer, ChatListNodeEntryPromoInfo?) -> Void, disabledPeerSelected: @escaping (Peer) -> Void, togglePeerSelected: @escaping (PeerId) -> Void, additionalCategorySelected: @escaping (Int) -> Void, messageSelected: @escaping (Peer, Message, ChatListNodeEntryPromoInfo?) -> Void, groupSelected: @escaping (PeerGroupId) -> Void, addContact: @escaping (String) -> Void, setPeerIdWithRevealedOptions: @escaping (PeerId?, PeerId?) -> Void, setItemPinned: @escaping (PinnedItemId, Bool) -> Void, setPeerMuted: @escaping (PeerId, Bool) -> Void, deletePeer: @escaping (PeerId, Bool) -> Void, updatePeerGrouping: @escaping (PeerId, Bool) -> Void, togglePeerMarkedUnread: @escaping (PeerId, Bool) -> Void, toggleArchivedFolderHiddenByDefault: @escaping () -> Void, hidePsa: @escaping (PeerId) -> Void, activateChatPreview: @escaping (ChatListItem, ASDisplayNode, ContextGesture?) -> Void, present: @escaping (ViewController) -> Void) {
         self.activateSearch = activateSearch
         self.peerSelected = peerSelected
         self.disabledPeerSelected = disabledPeerSelected
@@ -430,7 +430,7 @@ public final class ChatListNode: ListView {
     public var groupSelected: ((PeerGroupId) -> Void)?
     public var addContact: ((String) -> Void)?
     public var activateSearch: (() -> Void)?
-    public var deletePeerChat: ((PeerId) -> Void)?
+    public var deletePeerChat: ((PeerId, Bool) -> Void)?
     public var updatePeerGrouping: ((PeerId, Bool) -> Void)?
     public var presentAlert: ((String) -> Void)?
     public var present: ((ViewController) -> Void)?
@@ -442,6 +442,13 @@ public final class ChatListNode: ListView {
     
     private let viewProcessingQueue = Queue()
     private var chatListView: ChatListNodeView?
+    var entriesCount: Int {
+        if let chatListView = self.chatListView {
+            return chatListView.filteredEntries.count
+        } else {
+            return 0
+        }
+    }
     private var interaction: ChatListNodeInteraction?
     
     private var dequeuedInitialTransitionOnLayout = false
@@ -628,8 +635,8 @@ public final class ChatListNode: ListView {
                 }
                 self?.setCurrentRemovingPeerId(nil)
             })
-        }, deletePeer: { [weak self] peerId in
-            self?.deletePeerChat?(peerId)
+        }, deletePeer: { [weak self] peerId, joined in
+            self?.deletePeerChat?(peerId, joined)
         }, updatePeerGrouping: { [weak self] peerId, group in
             self?.updatePeerGrouping?(peerId, group)
         }, togglePeerMarkedUnread: { [weak self, weak context] peerId, animated in
@@ -735,6 +742,7 @@ public final class ChatListNode: ListView {
                             return true
                         case let .peers(filter, _, _, _):
                             guard !filter.contains(.excludeSavedMessages) || peer.peerId != currentPeerId else { return false }
+                            guard !filter.contains(.excludeSavedMessages) || !peer.peerId.isReplies else { return false }
                             guard !filter.contains(.excludeSecretChats) || peer.peerId.namespace != Namespaces.Peer.SecretChat else { return false }
                             guard !filter.contains(.onlyPrivateChats) || peer.peerId.namespace == Namespaces.Peer.CloudUser else { return false }
 
@@ -985,6 +993,9 @@ public final class ChatListNode: ListView {
             var cachedResult: [PeerId: [(Peer, PeerInputActivity)]] = [:]
             previousPeerCache.with { dict -> Void in
                 for (chatPeerId, activities) in activitiesByPeerId {
+                    if chatPeerId.threadId != nil {
+                        continue
+                    }
                     var cachedChatResult: [(Peer, PeerInputActivity)] = []
                     for (peerId, activity) in activities {
                         if let peer = dict[peerId] {
@@ -993,7 +1004,7 @@ public final class ChatListNode: ListView {
                             foundAllPeers = false
                             break
                         }
-                        cachedResult[chatPeerId] = cachedChatResult
+                        cachedResult[chatPeerId.peerId] = cachedChatResult
                     }
                 }
             }
@@ -1004,6 +1015,9 @@ public final class ChatListNode: ListView {
                     var result: [PeerId: [(Peer, PeerInputActivity)]] = [:]
                     var peerCache: [PeerId: Peer] = [:]
                     for (chatPeerId, activities) in activitiesByPeerId {
+                        if chatPeerId.threadId != nil {
+                            continue
+                        }
                         var chatResult: [(Peer, PeerInputActivity)] = []
                         
                         for (peerId, activity) in activities {
@@ -1013,7 +1027,7 @@ public final class ChatListNode: ListView {
                             }
                         }
                         
-                        result[chatPeerId] = chatResult
+                        result[chatPeerId.peerId] = chatResult
                     }
                     let _ = previousPeerCache.swap(peerCache)
                     return result
@@ -1837,7 +1851,9 @@ private func statusStringForPeerType(accountPeerId: PeerId, strings: Presentatio
         }
     }
     
-    if let user = peer as? TelegramUser {
+    if peer.id.isReplies {
+        return nil
+    } else if let user = peer as? TelegramUser {
         if user.botInfo != nil || user.flags.contains(.isSupport) {
             return (strings.ChatList_PeerTypeBot, false)
         } else if isContact {
